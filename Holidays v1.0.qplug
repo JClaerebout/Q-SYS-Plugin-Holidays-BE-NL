@@ -1,0 +1,653 @@
+PluginInfo = {
+	-- Use a tilde (~) to seperate the name into a folder
+    Name = "Holidays BE-NL",
+	-- Use semantic versioning
+    Version = "1.0",
+	-- Use a GUID for the Id (Note: Avoid changing the Id for a plugin once it is set)
+    Id = "0db84eb2-c1b4-4124-b2d7-95712161a38c",
+	-- The square brackets allow for a multi-line string
+    Description = [[Shows you if today is a holiday in Belgium or the Netherlands.]],
+    Author = "Jens Claerebout",
+    ShowDebug = true
+}
+
+------------------------------- Global Variables ------------------------------
+COLORS = { 
+	["OK"] = "#00FF00",
+	[0] = "#00FF00",
+	["COMPROMISED"] = "orange",
+	[1] = "orange",
+	["FAULT"] = "red",
+	[2] = "red",
+	["NOT_PRESENT"] = "gray",
+	[3] = "gray",
+	["MISSING"] = "darkred",
+	[4] = "darkred",
+	["INITIALIZING"] = "blue",
+	[5] = "blue",
+	["GREEN"] = "#00ff00",
+	["RED"] = "#ff0000",
+	["ORANGE"] = "#ffa500",
+	["GRAY"] = "#7c7c7c",
+	["DARK_GREEN"] = "#007C00",
+}
+
+STATUS_VALUES = {
+	["OK"] = 0,
+	["COMPROMISED"] = 1,
+	["FAULT"] = 2,
+	["NOT_PRESENT"] = 3,
+	["MISSING"] = 4,
+	["INITIALIZING"] = 5,
+}
+
+ENABLE_CODE_PIN = true
+
+--------------------------------- Properties ----------------------------------
+function GetProperties()
+    local props = {
+		{
+            Name = "Country",
+            Type = "enum",
+            Choices = {"Belgium", "Netherlands"},
+            Value = "Belgium"
+        },
+		{
+            Name = "Emulate",
+            Type = "boolean",
+            Value = false
+        }
+	}
+
+    return props
+end
+
+--Modify visibility based on other properties
+--[[
+    Example: 
+    if props["propertyName"].Value == "DHCP" then
+        props["someStaticIPRelatedProperty"].IsHidden = true
+    else
+        props["someStaticIPRelatedProperty"].IsHidden = false
+]]--
+function RectifyProperties(props)
+    return props
+end
+
+------------------------- Plugin Block Name and Color -------------------------
+function GetPrettyName(props)
+    return PluginInfo["Name"] .. " v" .. PluginInfo["Version"]
+end
+
+function GetColor(props)
+	return ConvertColor("#cccccc")
+end
+
+---------------------------------- Controls -----------------------------------
+function GetControls(props)
+    local ctls = { 
+		{
+			Name = "HolidayStatus",
+			Count = 1,
+			ControlType = "Indicator",
+			IndicatorType = "LED",
+			UserPin = true,
+			PinStyle = "Output",
+		},
+		{
+			Name = "HolidayName",
+			Count = 1,
+            ControlType = "Indicator",
+            IndicatorType = "Text",
+            PinStyle = "Output",
+            UserPin = true,
+			PinStyle = "Output",
+		},
+		{
+			Name = "DateInput",
+			Count = 1,
+            ControlType = "Text",
+			DefaultValue = "1-1-2026",
+			UserPin = false,
+		},
+		{
+			Name = "Date",
+			Count = 1,
+			ControlType = "Indicator",
+			IndicatorType = "Text",
+			UserPin = false,
+		},
+		{
+			Name = "HolidayToday",
+			Count = 1,
+			ControlType = "Indicator",
+			IndicatorType = "Text",
+			UserPin = false,
+		},
+	}
+    -- figure out how many list entries we need based on the selected country
+    local listCount = 12
+    if props["Country"].Value == "Netherlands" then
+        listCount = 10
+    end
+    table.insert(ctls, {
+        Name = "HolidayEntry",
+        Count = listCount,
+        ControlType = "Indicator",
+        IndicatorType = "Text",
+        UserPin = true,
+		PinStyle = "Output",
+    })
+    table.insert(ctls, {
+        Name = "IgnoreBtn",
+        Count = listCount,
+        ControlType = "Button",
+        ButtonType = "Toggle",
+        UserPin = true,
+		PinStyle = "Both",
+    })
+
+    return ctls
+end
+
+------------------------------- Control Layout --------------------------------
+function GetControlLayout(props)
+	-- Uncomment the next line if you are using multiple pages
+	local currentPage = props["page_index"].Value
+	
+    local layout = { }
+	local graphics = { }
+
+	BelgiumBase64Image = "iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAAByNR6YAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH1wsMEAARiH+LHAAABztJREFUeJzt1jENgEAAwMCHGRnowL8GdLCDAcYmT8idgo5dxhj3AF7d5zY7AT7rOvbZCfBZ6+wAAIC/MVgAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQM1gAADGDBQAQewBaNgdar5nzNgAAAABJRU5ErkJggg=="
+	NetherlandsBase64Image = "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"
+	
+	if currentPage == 1 then
+
+		layout["HolidayStatus"] =
+		{
+			PrettyName = "Holiday Status",
+			Position = { 534,290 },
+			Size = { 25,25 },
+			Style = "Led"
+		}
+
+		layout["HolidayName"] =
+		{
+			PrettyName = "Holiday Name",
+			Position = { 124,190 },
+			Size = { 461,62 },
+			TextFontSize = 25,
+			Style = "Text",
+			StrokeWidth = 0,
+			Color = {0, 0, 0, 0},
+			TextColor = {0, 0, 0}
+		}
+
+		if props["Emulate"].Value then
+			layout["DateInput"] =
+			{
+				PrettyName = "Date Input (Emulation)",
+				Position = { 124,76 },
+				Size = { 461,62 },
+				TextFontSize = 25,
+				Style = "Text"
+			}
+		else
+			layout["Date"] =
+			{
+				PrettyName = "Date",
+				Position = { 124,76 },
+				Size = { 461,62 },
+				TextFontSize = 25,
+				Style = "Text",
+				StrokeWidth = 0,
+				Color = {0, 0, 0, 0},
+				TextColor = {0, 0, 0}
+			}
+		end
+
+		layout["HolidayToday"] = 
+		{
+			PrettyName = "Holiday Today",
+			Style = "Text",
+			Position = { 124,275 },
+			Size = { 410,49 },
+			TextFontSize = 25,
+			StrokeWidth = 0,
+			Color = {0, 0, 0, 0},
+			TextColor = {0, 0, 0},
+			HTextAlign = "Left",
+		}
+
+
+		graphics[1] = 
+		{
+			Type = "GroupBox",
+			Position = { 14,14 },
+			Size = {670,351},
+			StrokeColor = "black",
+			StrokeWidth = 2,
+			CornerRadius = 10,
+		}
+
+
+		-- "Emulate" is a boolean property, its value lives in .Value
+		if props["Emulate"].Value then
+			graphics[2] = 
+			{
+				Type = "Label",
+				Position = { 124,35 },
+				Size = { 461,41 },
+				Text = "Date input (Emulation)",
+				TextSize = 25,
+				HTextAlign = "Center"
+			}
+		else
+			graphics[2] = 
+			{
+				Type = "Label",
+				Position = { 124,35 },
+				Size = { 461,41 },
+				Text = "Date:",
+				TextSize = 25,
+				HTextAlign = "Center",
+				StrokeWidth = 0,
+				Color = {0, 0, 0, 0},
+				TextColor = {0, 0, 0}
+			}
+		end
+
+		graphics[3] = 
+		{
+			Type = "Label",
+			Position = { 124,149 },
+			Size = { 461,41 },
+			Text = "Holiday name:",
+			TextSize = 25,
+			HTextAlign = "Center",
+			StrokeWidth = 0,
+			Color = {0, 0, 0, 0},
+			TextColor = {0, 0, 0}
+		}
+
+
+		if props["Country"].Value=="Belgium" then
+			graphics[4] = 
+			{
+				Type = "Image", -- PNG,JPEG
+				Image = BelgiumBase64Image,
+				Position = {25,25},
+				Size = {65,45}
+			}
+		elseif props["Country"].Value=="Netherlands" then
+			graphics[4] = 
+			{
+				Type = "Image", -- PNG,JPEG
+				Image = NetherlandsBase64Image,
+				Position = {25,25},
+				Size = {65,45}
+			}
+		end
+	elseif currentPage == 2 then
+        -- use the same count we applied to the controls so the layout matches
+        local entryCount = 12
+        if props["Country"].Value == "Netherlands" then
+            entryCount = 10
+        end
+        -- layout constants
+        local boxTop = 14
+        local entryHeight, entrySpacing = 35, 35
+        local padding = 20 -- space above/below entries inside the box
+        -- compute box height based on number of entries
+        local boxHeight = (entryCount + 1) * entrySpacing + padding * 2
+        -- starting Y for first entry is boxTop + padding
+        local startY = boxTop + entryHeight + padding
+        for i = 1, entryCount do
+            layout["HolidayEntry " .. i] =
+            {
+                PrettyName = "Holiday " .. i,
+                Style = "Text",
+                Position = { 25, startY + (i-1)*entrySpacing },
+                Size = { 500, entryHeight },
+                TextFontSize = 20,
+                HTextAlign = "Left",
+				StrokeWidth = 0,
+				Color = {0, 0, 0, 0},
+				TextColor = {0, 0, 0}
+            }
+			layout["IgnoreBtn " .. i] =
+			{
+				PrettyName = "Ignore Button " .. i,
+				Style = "Button",
+				Position = { 590, startY + (i-1)*entrySpacing },
+				Size = { 35, entryHeight },
+				CornerRadius = 10,
+			}
+        end
+
+		graphics[1] = 
+		{
+			Type = "GroupBox",
+			Position = { 14, 14 },
+			Size = { 670, boxHeight },
+			StrokeColor = "black",
+			StrokeWidth = 2,
+			CornerRadius = 10,
+		}
+		graphics[2] = 
+		{
+			Type = "Label",
+			Position = { 25, 20 },
+			Size = { 500, entryHeight },
+			Text = "Date:\t\tHoliday Name:",
+			TextSize = 20,
+			HTextAlign = "Left"
+		}
+		graphics[3] = 
+		{
+			Type = "Label",
+			Position = { 580, 20 },
+			Size = { 100, entryHeight },
+			Text = "Ignore:",
+			TextSize = 20,
+			HTextAlign = "Left"
+		}
+	end
+
+    return layout, graphics
+end
+
+---------------------------- Other Plugin Functions ---------------------------
+
+function GetPins(props)
+	local pins = { }
+  
+	return pins
+end
+-- Uncomment if you need multiple pages (tabs)
+--Current page number can be retrieved in other functions as props["page_index"].Value
+local pagenames = {"Today","List"}
+
+function GetPages(props)
+    local pages = {}
+	for ix = 1, #pagenames do
+		table.insert(pages,{ name = pagenames[ix] })
+	end
+    return pages
+end
+
+function GetComponents(props)
+	local components = { }
+
+	return components
+end
+
+function GetWiring(props)
+	local wiring = { }
+  
+	return wiring
+end
+
+------------------------------ Local Functions --------------------------------
+function HEXtoDEC(hex)
+	hex = string.upper(hex)
+	local b1 = string.byte(string.sub(hex, 1, 1))
+	local b2 = string.byte(string.sub(hex, 2, 2))
+  
+	return( (b1<=57 and b1-48 or b1-55)*16 + (b2<=57 and b2-48 or b2-55) )
+end
+
+function ConvertColor(c)
+	local t = {}
+	t[1] = HEXtoDEC(string.sub(c,2,3))
+	t[2] = HEXtoDEC(string.sub(c,4,5))
+	t[3] = HEXtoDEC(string.sub(c,6,7))
+	return t
+end
+
+-- === HELPER FUNCTIONS ===
+function easter_date(year)
+    local a = year % 19
+    local b = math.floor(year / 100)
+    local c = year % 100
+    local d = math.floor(b / 4)
+    local e = b % 4
+    local f = math.floor((b + 8) / 25)
+    local g = math.floor((b - f + 1) / 3)
+    local h = (19 * a + b - d - g + 15) % 30
+    local i = math.floor(c / 4)
+    local k = c % 4
+    local l = (32 + 2 * e + 2 * i - h - k) % 7
+    local m = math.floor((a + 11 * h + 22 * l) / 451)
+    local month = math.floor((h + l - 7 * m + 114) / 31)
+    local day = ((h + l - 7 * m + 114) % 31) + 1
+    return day, month
+end
+
+
+-- return a table {day=<>,month=<>,year=<>} based on either the real clock
+-- or the user-entered emulation date.  Also update the visible Date
+-- indicator.
+local function parse_input_date()
+    local s = Controls.DateInput.String or ""
+    -- trim whitespace around the string
+    s = s:match("^%s*(.-)%s*$")
+    -- allow spaces around the dashes as well
+    local d,m,y = s:match("^(%d+)%s*%-%s*(%d+)%s*%-%s*(%d+)$")
+    return tonumber(d), tonumber(m), tonumber(y)
+end
+
+function get_current_date()
+    if Properties["Emulate"].Value then
+        local d,m,y = parse_input_date()
+        print("[DEBUG] Emulate mode active, input string='" .. (Controls.DateInput.String or "") .. "'")
+        if d and m and y then
+            print(string.format("[DEBUG] Parsed emulated date %d-%d-%d", d, m, y))
+            Controls.Date.String = string.format("%d-%d-%d", d, m, y)
+            return { day = d, month = m, year = y }
+        else
+            print("[DEBUG] Failed to parse emulated date, falling back to real clock")
+        end
+        -- malformed entry; fall through to real date
+    end
+    local t = os.date("*t")
+    Controls.Date.String = string.format(t.day .. "-" .. t.month .. "-" .. t.year)
+    return t
+end
+
+function is_today(day, month)
+    local today = get_current_date()
+    return today.day == day and today.month == month
+end
+
+function date_offset_from_easter(offset_days)
+    local today = get_current_date()
+    local year = tonumber(today.year)
+    local day, month = easter_date(year)
+    local easter = os.time{year = year, month = month, day = day, hour = 0, min = 0, sec = 0}
+    local target = os.date("*t", easter + offset_days * 86400)
+    return target.day, target.month, target.year
+end
+
+-- === MAIN FUNCTION ===
+function get_sorted_holidays()
+    -- return a list of {day, month, name} sorted by month/day for the current year
+    local today = get_current_date()
+    local year = tonumber(today.year)
+    local list = {}
+
+    -- fixed dates
+    for _, datum in ipairs(holidays.fixed[country]) do
+        table.insert(list, {day = datum[1], month = datum[2], name = datum[3]})
+    end
+
+    -- variable dates (based on easter)
+    for _, offsetData in ipairs(holidays.variable[country]) do
+        local offset, name = offsetData[1], offsetData[2]
+        local d, m, y = date_offset_from_easter(offset)
+        if y == year then
+            table.insert(list, {day = d, month = m, name = name})
+        end
+    end
+
+    table.sort(list, function(a, b)
+        if a.month == b.month then
+            return a.day < b.day
+        end
+        return a.month < b.month
+    end)
+
+	local entryCount = 12
+	if Properties["Country"].Value == "Netherlands" then
+		entryCount = 10
+	end
+	
+	for i, item in ipairs(list) do
+		if i <= entryCount then
+			Controls.HolidayEntry[i].String = string.format("%02d - %s\t\t%s", item.day, months[item.month], item.name)
+		end
+	end
+
+    return list
+end
+
+function holiday_info()
+    -- return three values: isHoliday, name, ignoredFlag
+    -- The name is returned regardless of the ignore state so the UI can still
+    -- display it; only the boolean output should be suppressed when ignored.
+
+    local today = get_current_date()
+    local list = get_sorted_holidays()
+
+    local entryCount = 12
+    if Properties["Country"].Value == "Netherlands" then
+        entryCount = 10
+    end
+
+    for i, item in ipairs(list) do
+        if i > entryCount then
+            break
+        end
+        if today.day == item.day and today.month == item.month then
+            local ignored = false
+            if Controls.IgnoreBtn and Controls.IgnoreBtn[i] then
+                ignored = Controls.IgnoreBtn[i].Boolean
+            end
+            return true, item.name, ignored
+        end
+    end
+
+    return false, "", false
+end
+
+-- === OUTPUT FUNCTION ===
+function daily_check()
+    local isHoliday, name, ignored = holiday_info()
+    -- holiday indicator should be false when ignored, but we still report name
+    Controls.HolidayStatus.Boolean = isHoliday and not ignored
+    Controls.HolidayName.String = name ~= "" and name or "No Holiday"
+    if isHoliday then
+        Controls.HolidayToday.String = "Today is a holiday" .. (ignored and " (Ignored)" or "")
+    else
+        Controls.HolidayToday.String = "No holiday today."
+    end
+    print("Holiday:", isHoliday and name or "No Holiday", ignored and "(ignored)" or "")
+end
+
+------------------------------- Runtime Logic ---------------------------------
+
+if Controls then
+------------------------------------ Objects ----------------------------------
+
+-------------------------------- Initialization -------------------------------
+function Initialize()
+	Timer = Timer or {}
+
+	-- === CONFIG ===
+	if Properties["Country"].Value=="Belgium" then
+		country = "BE" 
+	elseif Properties["Country"].Value=="Netherlands" then
+		country = "NL" 
+	end
+	
+	checkHour = 1  -- check every day at 01:00
+
+	-- === HOLIDAY DEFINITIONS ===
+	holidays = {
+		fixed = {
+			["BE"] = {
+				{1, 1, "Nieuwjaar"},
+				{1, 5, "Dag van de Arbeid"},
+				{21, 7, "Nationale feestdag"},
+				{15, 8, "O.L.V. Hemelvaart"},
+				{1, 11, "Allerheiligen"},
+				{11, 11, "Wapenstilstand"},
+				{25, 12, "Kerstmis"},
+			},
+			["NL"] = {
+				{1, 1, "Nieuwjaarsdag"},
+				{27, 4, "Koningsdag"},
+				{5, 5, "Bevrijdingsdag"},
+				{25, 12, "Eerste Kerstdag"},
+				{26, 12, "Tweede Kerstdag"},
+			}
+		},
+		variable = {
+			["BE"] = {
+				{0, "Pasen"},
+				{1, "Paasmaandag"},
+				{39, "Hemelvaart"},
+				{49, "Pinksteren"},
+				{50, "Pinkstermaandag"},
+			},
+			["NL"] = {
+				{0, "Pasen"},
+				{1, "Paasmaandag"},
+				{39, "Hemelvaart"},
+				{49, "Pinksteren"},
+				{50, "Pinkstermaandag"},
+			}
+		}
+	}
+
+	months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+
+	-- Initialize check
+	daily_check()
+
+	-- control input change handler
+	Controls.DateInput.EventHandler = function()
+		if Properties["Emulate"].Value then
+			daily_check()
+		end
+	end
+
+	-- === TIMER FOR DAILY CHECK ===
+	lastCheckedDay = os.date("*t").day
+	Timer.DayCheck = Timer.New()
+	Timer.DayCheck:Start(60)  -- every minute
+
+	Timer.DayCheck.EventHandler = function()
+		local now = os.date("*t")
+		if now.hour == checkHour and now.day ~= lastCheckedDay then
+			lastCheckedDay = now.day
+			daily_check()
+		end
+	end
+end
+
+local canInitialize = true
+
+-- Check Properties and other stuff for illegal values
+
+if canInitialize then
+	print("Initializing")
+	Initialize()
+	print("Initialization Complete")
+else
+	print("Not initializing")
+end
+
+-- Nothing should be done after this point
+
+end	--if Controls 
