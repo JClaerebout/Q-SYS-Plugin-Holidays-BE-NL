@@ -1,8 +1,9 @@
+BuildVersion = "1.0.0.0"
 PluginInfo = {
 	-- Use a tilde (~) to seperate the name into a folder
-    Name = "Holidays BE-NL",
+    Name = "Holidays BE-NL v" .. BuildVersion, -- preferred format is "manufacturer~plugin name version"
 	-- Use semantic versioning
-    Version = "1.0",
+    Version = BuildVersion,
 	-- Use a GUID for the Id (Note: Avoid changing the Id for a plugin once it is set)
     Id = "0db84eb2-c1b4-4124-b2d7-95712161a38c",
 	-- The square brackets allow for a multi-line string
@@ -76,7 +77,7 @@ end
 
 ------------------------- Plugin Block Name and Color -------------------------
 function GetPrettyName(props)
-    return PluginInfo["Name"] .. " v" .. PluginInfo["Version"]
+    return PluginInfo["Name"]
 end
 
 function GetColor(props)
